@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Reading Room — MBOX Viewer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300;1,9..40,400&family=JetBrains+Mono:wght@400&display=swap');
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --parchment: #f4f0e8;
+  --parchment-deep: #ebe5d9;
+  --parchment-dark: #d9d0c1;
+  --ink: #2c2418;
+  --ink-light: #5c4f3d;
+  --ink-faint: #8a7e6c;
+  --ink-ghost: #b5ab9a;
+  --accent: #8b3a2a;
+  --accent-light: #c4624e;
+  --accent-pale: #f0d8d2;
+  --cream: #faf8f4;
+  --shadow: rgba(44, 36, 24, 0.08);
+  --shadow-md: rgba(44, 36, 24, 0.12);
+  --border: #d4cdbf;
+  --border-light: #e8e2d6;
+  --selected: #eee8db;
+  --hover: #f0ebe1;
+  --radius: 4px;
+  --sidebar-w: 380px;
+}
+
+html { font-size: 15px; }
+
+body {
+  font-family: 'DM Sans', Georgia, serif;
+  background: var(--parchment);
+  color: var(--ink);
+  height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle paper texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ========== UPLOAD SCREEN ========== */
+#upload-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 2rem;
+  animation: fadeIn 0.6s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.upload-container {
+  text-align: center;
+  max-width: 540px;
+  width: 100%;
+}
+
+.upload-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 3.2rem;
+  font-weight: 400;
+  color: var(--ink);
+  margin-bottom: 0.3rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.upload-subtitle {
+  font-size: 0.95rem;
+  color: var(--ink-faint);
+  margin-bottom: 2.5rem;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 3.5rem 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: var(--cream);
+  position: relative;
+}
+
+.drop-zone:hover, .drop-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-pale);
+  transform: scale(1.01);
+}
+
+.drop-zone.dragover {
+  box-shadow: 0 0 0 4px rgba(139, 58, 42, 0.1);
+}
+
+.drop-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 1.2rem;
+  opacity: 0.5;
+}
+
+.drop-icon svg { width: 100%; height: 100%; }
+
+.drop-text {
+  font-size: 1.05rem;
+  color: var(--ink-light);
+  margin-bottom: 0.4rem;
+}
+
+.drop-hint {
+  font-size: 0.8rem;
+  color: var(--ink-ghost);
+  font-weight: 300;
+}
+
+.drop-zone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* ========== LOADING SCREEN ========== */
+#loading-screen {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.loading-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1.8rem;
+  color: var(--ink);
+}
+
+.loading-bar-track {
+  width: 280px;
+  height: 3px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.loading-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.loading-status {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  font-weight: 300;
+}
+
+/* ========== MAIN APP ========== */
+#app-screen {
+  display: none;
+  height: 100vh;
+  flex-direction: column;
+}
+
+/* Top bar */
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.2rem;
+  background: var(--cream);
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.app-logo {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1.25rem;
+  color: var(--ink);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
+.search-wrapper {
+  flex: 1;
+  max-width: 480px;
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--ink-ghost);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.7rem 0.5rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--parchment);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.87rem;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input::placeholder { color: var(--ink-ghost); }
+.search-input:focus { border-color: var(--accent); }
+
+.email-count {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  background: var(--parchment-deep);
+  padding: 0.3rem 0.7rem;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.clear-btn {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--cream);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.clear-btn:hover {
+  background: var(--accent);
+  color: var(--cream);
+  border-color: var(--accent);
+}
+
+/* Content area */
+.content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  background: var(--cream);
+}
+
+.email-list {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.email-list::-webkit-scrollbar { width: 6px; }
+.email-list::-webkit-scrollbar-track { background: transparent; }
+.email-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.email-list::-webkit-scrollbar-thumb:hover { background: var(--ink-ghost); }
+
+.email-item {
+  padding: 0.85rem 1.2rem;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.email-item:hover { background: var(--hover); }
+.email-item.selected { background: var(--selected); }
+
+.email-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+.email-item-sender {
+  font-size: 0.87rem;
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.email-item-subject {
+  font-size: 0.82rem;
+  color: var(--ink-light);
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 400;
+}
+
+.email-item-date {
+  font-size: 0.72rem;
+  color: var(--ink-ghost);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+}
+
+.load-more {
+  padding: 0.9rem;
+  text-align: center;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.load-more-btn {
+  padding: 0.45rem 1.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--parchment);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  color: var(--ink-light);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.load-more-btn:hover {
+  background: var(--parchment-deep);
+  border-color: var(--ink-ghost);
+}
+
+/* Detail panel */
+.detail-panel {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--parchment);
+}
+
+.detail-panel::-webkit-scrollbar { width: 6px; }
+.detail-panel::-webkit-scrollbar-track { background: transparent; }
+.detail-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ink-ghost);
+  font-size: 0.95rem;
+  font-style: italic;
+  font-family: 'Instrument Serif', Georgia, serif;
+}
+
+.detail-header {
+  padding: 1.8rem 2.2rem 1.2rem;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--cream);
+}
+
+.detail-subject {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1.65rem;
+  color: var(--ink);
+  margin-bottom: 1rem;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.detail-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 0.8rem;
+  font-size: 0.82rem;
+}
+
+.detail-meta-label {
+  color: var(--ink-ghost);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  padding-top: 0.1rem;
+}
+
+.detail-meta-value {
+  color: var(--ink-light);
+  word-break: break-word;
+}
+
+.detail-body {
+  padding: 1.8rem 2.2rem 3rem;
+}
+
+.detail-body-text {
+  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  color: var(--ink-light);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-body-html {
+  width: 100%;
+  border: none;
+  min-height: 400px;
+  background: transparent;
+}
+
+/* Mobile back button */
+.mobile-back {
+  display: none;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+  border: none;
+  background: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.85rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.mobile-back svg { width: 16px; height: 16px; }
+
+/* ========== NO RESULTS ========== */
+.no-results {
+  padding: 2rem;
+  text-align: center;
+  color: var(--ink-ghost);
+  font-style: italic;
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 1rem;
+}
+
+/* ========== ANIMATIONS ========== */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.email-item { animation: slideIn 0.25s ease both; }
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 100%; }
+
+  .top-bar { flex-wrap: wrap; gap: 0.5rem; }
+  .search-wrapper { order: 10; max-width: 100%; flex-basis: 100%; }
+  .app-logo { font-size: 1.1rem; }
+
+  .content { position: relative; }
+
+  .sidebar {
+    width: 100%;
+    min-width: 100%;
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    transition: transform 0.3s ease;
+  }
+
+  .detail-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+
+  .detail-panel.visible {
+    transform: translateX(0);
+  }
+
+  .mobile-back { display: flex; }
+
+  .detail-header { padding: 1.2rem 1rem 1rem; }
+  .detail-subject { font-size: 1.3rem; }
+  .detail-body { padding: 1.2rem 1rem 2rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="upload-screen">
+  <div class="upload-container">
+    <h1 class="upload-title">The Reading Room</h1>
+    <p class="upload-subtitle">An archive viewer for your correspondence</p>
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">
+        <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="10" width="36" height="28" rx="3"/>
+          <polyline points="6,14 24,28 42,14"/>
+        </svg>
+      </div>
+      <div class="drop-text">Drop your .mbox file here</div>
+      <div class="drop-hint">or click to browse</div>
+      <input type="file" id="file-input" accept=".mbox,.mbox.gz">
+    </div>
+  </div>
+</div>
+
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+  <div class="loading-title">Opening the archive&hellip;</div>
+  <div class="loading-bar-track">
+    <div class="loading-bar-fill" id="loading-bar"></div>
+  </div>
+  <div class="loading-status" id="loading-status">Reading file&hellip;</div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app-screen">
+  <div class="top-bar">
+    <div class="app-logo">The Reading Room</div>
+    <div class="search-wrapper">
+      <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="6.5" cy="6.5" r="5"/>
+        <line x1="10" y1="10" x2="14.5" y2="14.5"/>
+      </svg>
+      <input type="text" class="search-input" id="search-input" placeholder="Search sender, subject, or content&hellip;">
+    </div>
+    <div class="email-count" id="email-count"></div>
+    <button class="clear-btn" id="clear-btn">New file</button>
+  </div>
+  <div class="content">
+    <div class="sidebar">
+      <div class="email-list" id="email-list"></div>
+    </div>
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-empty">Select a message to read</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+let allEmails = [];
+let filteredEmails = [];
+let displayedCount = 0;
+let selectedIndex = -1;
+const PAGE_SIZE = 60;
+
+// ===== DOM REFS =====
+const uploadScreen = document.getElementById('upload-screen');
+const loadingScreen = document.getElementById('loading-screen');
+const appScreen = document.getElementById('app-screen');
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const loadingBar = document.getElementById('loading-bar');
+const loadingStatus = document.getElementById('loading-status');
+const searchInput = document.getElementById('search-input');
+const emailList = document.getElementById('email-list');
+const detailPanel = document.getElementById('detail-panel');
+const emailCountEl = document.getElementById('email-count');
+const clearBtn = document.getElementById('clear-btn');
+
+// ===== FILE HANDLING =====
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  showScreen('loading');
+  loadingBar.style.width = '10%';
+  loadingStatus.textContent = 'Reading file\u2026';
+
+  const reader = new FileReader();
+  reader.onprogress = e => {
+    if (e.lengthComputable) {
+      const pct = Math.round((e.loaded / e.total) * 40) + 10;
+      loadingBar.style.width = pct + '%';
+    }
+  };
+  reader.onload = e => {
+    loadingBar.style.width = '50%';
+    loadingStatus.textContent = 'Parsing emails\u2026';
+    // Use setTimeout to let the UI update before heavy parsing
+    setTimeout(() => {
+      allEmails = parseMbox(e.target.result);
+      loadingBar.style.width = '90%';
+      loadingStatus.textContent = `Found ${allEmails.length.toLocaleString()} emails. Preparing\u2026`;
+      setTimeout(() => {
+        allEmails.sort((a, b) => (b.dateObj || 0) - (a.dateObj || 0));
+        filteredEmails = allEmails;
+        displayedCount = 0;
+        selectedIndex = -1;
+        loadingBar.style.width = '100%';
+        showScreen('app');
+        updateCount();
+        renderList();
+      }, 80);
+    }, 50);
+  };
+  reader.readAsText(file);
+}
+
+// ===== MBOX PARSER =====
+function parseMbox(text) {
+  const emails = [];
+  // Split on "From " at start of line — the mbox separator
+  // We need to be careful: "From " can appear in email bodies
+  // The standard mbox "From " line pattern: starts with "From ", followed by an email-like token and a date
+  const chunks = text.split(/^From (?=\S+.*\d{4})/m);
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i].trim();
+    if (!chunk) continue;
+
+    // Skip the envelope "From " line itself (first line of chunk)
+    let raw = chunk;
+    const firstNewline = raw.indexOf('\n');
+    if (firstNewline === -1) continue;
+
+    // Check if first line looks like an envelope line (has @ or day-of-week patterns)
+    const firstLine = raw.substring(0, firstNewline);
+    if (firstLine.match(/@.*\d{4}/) || firstLine.match(/\w{3}\s+\w{3}\s+\d/)) {
+      raw = raw.substring(firstNewline + 1);
+    }
+
+    const email = parseEmail(raw);
+    if (email && (email.subject || email.from || email.body)) {
+      emails.push(email);
+    }
+  }
+  return emails;
+}
+
+function parseEmail(raw) {
+  const headerEnd = raw.indexOf('\n\n');
+  if (headerEnd === -1) return null;
+
+  const headerBlock = raw.substring(0, headerEnd);
+  const bodyRaw = raw.substring(headerEnd + 2);
+
+  // Parse headers (handle continuation lines)
+  const headers = {};
+  const lines = headerBlock.split('\n');
+  let currentKey = '';
+  for (const line of lines) {
+    if (line.match(/^\s+/) && currentKey) {
+      headers[currentKey] += ' ' + line.trim();
+    } else {
+      const colonIdx = line.indexOf(':');
+      if (colonIdx > 0) {
+        currentKey = line.substring(0, colonIdx).toLowerCase().trim();
+        headers[currentKey] = line.substring(colonIdx + 1).trim();
+      }
+    }
+  }
+
+  const contentType = headers['content-type'] || 'text/plain';
+  const encoding = (headers['content-transfer-encoding'] || '').toLowerCase().trim();
+  let body = '';
+  let bodyHtml = '';
+
+  if (contentType.toLowerCase().includes('multipart')) {
+    const parsed = parseMultipart(bodyRaw, contentType);
+    body = parsed.text;
+    bodyHtml = parsed.html;
+  } else if (contentType.toLowerCase().includes('text/html')) {
+    bodyHtml = decodeBody(bodyRaw, encoding, contentType);
+  } else {
+    body = decodeBody(bodyRaw, encoding, contentType);
+  }
+
+  const subject = decodeHeader(headers['subject'] || '');
+  const from = decodeHeader(headers['from'] || '');
+  const to = decodeHeader(headers['to'] || '');
+  const dateStr = headers['date'] || '';
+  let dateObj = null;
+  try { dateObj = new Date(dateStr); if (isNaN(dateObj)) dateObj = null; } catch(e) { dateObj = null; }
+
+  return {
+    subject: subject || '(No Subject)',
+    from,
+    to,
+    date: dateStr,
+    dateObj,
+    body,
+    bodyHtml,
+    senderName: extractSenderName(from),
+    searchText: (subject + ' ' + from + ' ' + body).toLowerCase()
+  };
+}
+
+function parseMultipart(bodyRaw, contentType) {
+  const boundaryMatch = contentType.match(/boundary=["']?([^"';\s]+)/i);
+  if (!boundaryMatch) return { text: bodyRaw, html: '' };
+
+  const boundary = boundaryMatch[1];
+  const parts = bodyRaw.split('--' + boundary);
+  let text = '';
+  let html = '';
+
+  for (const part of parts) {
+    if (part.trim() === '--' || part.trim() === '') continue;
+
+    const partHeaderEnd = part.indexOf('\n\n');
+    if (partHeaderEnd === -1) continue;
+
+    const partHeaders = part.substring(0, partHeaderEnd).toLowerCase();
+    const partBody = part.substring(partHeaderEnd + 2).replace(/--\s*$/, '').trim();
+    const partEncoding = (partHeaders.match(/content-transfer-encoding:\s*(\S+)/) || [])[1] || '';
+    const partCT = (partHeaders.match(/content-type:\s*([^\n;]+)/) || [])[1] || '';
+
+    if (partHeaders.includes('multipart')) {
+      const nested = parseMultipart(partBody, partHeaders.match(/content-type:[^\n]+/)?.[0] || '');
+      if (!text && nested.text) text = nested.text;
+      if (!html && nested.html) html = nested.html;
+    } else if (partHeaders.includes('text/html')) {
+      html = decodeBody(partBody, partEncoding, partCT);
+    } else if (partHeaders.includes('text/plain')) {
+      text = decodeBody(partBody, partEncoding, partCT);
+    }
+  }
+
+  return { text, html };
+}
+
+function decodeBody(text, encoding, contentType) {
+  const charset = ((contentType || '').match(/charset=["']?([^"';\s]+)/i) || [])[1] || 'utf-8';
+
+  if (encoding === 'base64') {
+    try {
+      const cleaned = text.replace(/[^A-Za-z0-9+/=\n]/g, '').replace(/\n/g, '');
+      const binary = atob(cleaned);
+      if (charset.toLowerCase().includes('utf-8') || charset.toLowerCase().includes('utf8')) {
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder('utf-8').decode(bytes);
+      }
+      return binary;
+    } catch(e) {
+      return text;
+    }
+  }
+
+  if (encoding === 'quoted-printable') {
+    return decodeQuotedPrintable(text);
+  }
+
+  return text;
+}
+
+function decodeQuotedPrintable(str) {
+  return str
+    .replace(/=\r?\n/g, '') // soft line breaks
+    .replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
+function decodeHeader(str) {
+  // Handle RFC 2047 encoded words: =?charset?encoding?text?=
+  return str.replace(/=\?([^?]+)\?([BbQq])\?([^?]*)\?=/g, (match, charset, enc, text) => {
+    try {
+      if (enc.toUpperCase() === 'B') {
+        const binary = atob(text);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder(charset).decode(bytes);
+      } else {
+        const decoded = text.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (_, hex) =>
+          String.fromCharCode(parseInt(hex, 16)));
+        return decoded;
+      }
+    } catch(e) { return text; }
+  });
+}
+
+function extractSenderName(from) {
+  if (!from) return 'Unknown';
+  // "Name" <email> or Name <email>
+  const nameMatch = from.match(/^["']?([^"'<]+?)["']?\s*</);
+  if (nameMatch && nameMatch[1].trim()) return nameMatch[1].trim();
+  // Just email
+  const emailMatch = from.match(/<([^>]+)>/);
+  if (emailMatch) return emailMatch[1];
+  return from.trim() || 'Unknown';
+}
+
+// ===== SCREEN MANAGEMENT =====
+function showScreen(name) {
+  uploadScreen.style.display = 'none';
+  loadingScreen.style.display = 'none';
+  appScreen.style.display = 'none';
+
+  if (name === 'upload') uploadScreen.style.display = 'flex';
+  else if (name === 'loading') loadingScreen.style.display = 'flex';
+  else if (name === 'app') appScreen.style.display = 'flex';
+}
+
+// ===== RENDER EMAIL LIST =====
+function renderList(append) {
+  if (!append) {
+    emailList.innerHTML = '';
+    displayedCount = 0;
+  }
+
+  if (filteredEmails.length === 0) {
+    emailList.innerHTML = '<div class="no-results">No messages found</div>';
+    return;
+  }
+
+  const end = Math.min(displayedCount + PAGE_SIZE, filteredEmails.length);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = displayedCount; i < end; i++) {
+    const email = filteredEmails[i];
+    const el = document.createElement('div');
+    el.className = 'email-item';
+    el.dataset.index = i;
+    el.style.animationDelay = ((i - displayedCount) * 8) + 'ms';
+
+    const dateDisplay = email.dateObj
+      ? email.dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '';
+
+    el.innerHTML = `
+      <div class="email-item-sender">${esc(email.senderName)}</div>
+      <div class="email-item-subject">${esc(email.subject)}</div>
+      <div class="email-item-date">${esc(dateDisplay)}</div>
+    `;
+
+    el.addEventListener('click', () => selectEmail(i));
+    fragment.appendChild(el);
+  }
+
+  displayedCount = end;
+
+  // Remove old load more button
+  const oldBtn = emailList.querySelector('.load-more');
+  if (oldBtn) oldBtn.remove();
+
+  emailList.appendChild(fragment);
+
+  // Add load more if needed
+  if (displayedCount < filteredEmails.length) {
+    const loadMore = document.createElement('div');
+    loadMore.className = 'load-more';
+    loadMore.innerHTML = `<button class="load-more-btn">Show more (${(filteredEmails.length - displayedCount).toLocaleString()} remaining)</button>`;
+    loadMore.querySelector('button').addEventListener('click', () => renderList(true));
+    emailList.appendChild(loadMore);
+  }
+}
+
+// ===== SELECT EMAIL =====
+function selectEmail(index) {
+  selectedIndex = index;
+  const email = filteredEmails[index];
+
+  // Update sidebar selection
+  document.querySelectorAll('.email-item').forEach(el => {
+    el.classList.toggle('selected', parseInt(el.dataset.index) === index);
+  });
+
+  const dateDisplay = email.dateObj
+    ? email.dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      + ' at ' + email.dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : email.date || 'Unknown date';
+
+  let bodyContent = '';
+  if (email.bodyHtml) {
+    // Sandboxed iframe for HTML emails
+    const sanitized = email.bodyHtml;
+    bodyContent = `<iframe class="detail-body-html" sandbox="allow-same-origin" srcdoc="${esc(sanitized).replace(/"/g, '&quot;')}"></iframe>`;
+  } else {
+    bodyContent = `<div class="detail-body-text">${esc(email.body || '(No content)')}</div>`;
+  }
+
+  detailPanel.innerHTML = `
+    <div class="detail-header">
+      <button class="mobile-back" id="mobile-back">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="8" x2="4" y2="8"/><polyline points="8,4 4,8 8,12"/>
+        </svg>
+        Back
+      </button>
+      <div class="detail-subject">${esc(email.subject)}</div>
+      <div class="detail-meta">
+        <div class="detail-meta-label">From</div>
+        <div class="detail-meta-value">${esc(email.from)}</div>
+        <div class="detail-meta-label">To</div>
+        <div class="detail-meta-value">${esc(email.to)}</div>
+        <div class="detail-meta-label">Date</div>
+        <div class="detail-meta-value">${esc(dateDisplay)}</div>
+      </div>
+    </div>
+    <div class="detail-body">${bodyContent}</div>
+  `;
+
+  // Auto-resize iframe
+  const iframe = detailPanel.querySelector('iframe');
+  if (iframe) {
+    iframe.addEventListener('load', () => {
+      try {
+        const h = iframe.contentDocument.body.scrollHeight;
+        iframe.style.height = Math.max(h + 40, 300) + 'px';
+      } catch(e) {}
+    });
+  }
+
+  // Mobile: show detail
+  detailPanel.classList.add('visible');
+  const backBtn = document.getElementById('mobile-back');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => detailPanel.classList.remove('visible'));
+  }
+}
+
+// ===== SEARCH =====
+let searchTimeout;
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(() => {
+    const query = searchInput.value.toLowerCase().trim();
+    if (!query) {
+      filteredEmails = allEmails;
+    } else {
+      filteredEmails = allEmails.filter(e => e.searchText.includes(query));
+    }
+    updateCount();
+    renderList();
+  }, 200);
+});
+
+// ===== CLEAR =====
+clearBtn.addEventListener('click', () => {
+  allEmails = [];
+  filteredEmails = [];
+  displayedCount = 0;
+  selectedIndex = -1;
+  searchInput.value = '';
+  emailList.innerHTML = '';
+  detailPanel.innerHTML = '<div class="detail-empty">Select a message to read</div>';
+  fileInput.value = '';
+  showScreen('upload');
+});
+
+// ===== HELPERS =====
+function updateCount() {
+  const showing = filteredEmails.length;
+  const total = allEmails.length;
+  if (showing === total) {
+    emailCountEl.textContent = total.toLocaleString() + ' emails';
+  } else {
+    emailCountEl.textContent = showing.toLocaleString() + ' of ' + total.toLocaleString();
+  }
+}
+
+function esc(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
