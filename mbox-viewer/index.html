@@ -899,9 +899,31 @@ function normalizeSubject(subject) {
 }
 
 function buildThreads(emails) {
-  const threadMap = new Map(); // normalized subject -> thread
+  const subjectThreads = new Map(); // normalized subject -> array of threads
   const msgIdToThread = new Map(); // message-id -> thread
   const threads = [];
+  const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+
+  function extractEmails(str) {
+    const matches = (str || '').match(/[\w.+-]+@[\w.-]+/gi);
+    return new Set((matches || []).map(e => e.toLowerCase()));
+  }
+
+  function hasSharedParticipant(email, thread) {
+    const emailAddrs = extractEmails(email.from + ' ' + email.to);
+    for (const msg of thread.messages) {
+      const threadAddrs = extractEmails(msg.from + ' ' + msg.to);
+      for (const addr of emailAddrs) {
+        if (threadAddrs.has(addr)) return true;
+      }
+    }
+    return false;
+  }
+
+  function isWithinTimeWindow(email, thread) {
+    if (!email.dateObj || !thread.latestDate) return false;
+    return Math.abs(email.dateObj - thread.latestDate) < SEVEN_DAYS;
+  }
 
   for (const email of emails) {
     const normSubj = normalizeSubject(email.subject);
@@ -909,7 +931,7 @@ function buildThreads(emails) {
     const references = email.references;
     let thread = null;
 
-    // Try to find thread by In-Reply-To or References
+    // Try to find thread by In-Reply-To or References (strong signal — always trust)
     if (inReplyTo && msgIdToThread.has(inReplyTo)) {
       thread = msgIdToThread.get(inReplyTo);
     }
@@ -921,9 +943,16 @@ function buildThreads(emails) {
         }
       }
     }
-    // Fallback: match by normalized subject
-    if (!thread && normSubj && threadMap.has(normSubj)) {
-      thread = threadMap.get(normSubj);
+
+    // Fallback: match by normalized subject ONLY if shared participant + within 7 days
+    if (!thread && normSubj && normSubj.length > 3 && subjectThreads.has(normSubj)) {
+      const candidates = subjectThreads.get(normSubj);
+      for (const candidate of candidates) {
+        if (hasSharedParticipant(email, candidate) && isWithinTimeWindow(email, candidate)) {
+          thread = candidate;
+          break;
+        }
+      }
     }
 
     if (thread) {
@@ -940,7 +969,13 @@ function buildThreads(emails) {
         latestDate: email.dateObj
       };
       threads.push(thread);
-      if (normSubj) threadMap.set(normSubj, thread);
+    }
+
+    // Index by subject (multiple threads can share a subject)
+    if (normSubj) {
+      if (!subjectThreads.has(normSubj)) subjectThreads.set(normSubj, []);
+      const list = subjectThreads.get(normSubj);
+      if (!list.includes(thread)) list.push(thread);
     }
 
     // Index message ID
